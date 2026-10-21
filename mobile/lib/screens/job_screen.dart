@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile/model/job.dart';
 import 'package:mobile/screens/job_detail_screen.dart';
+import 'package:mobile/screens/login_screen.dart';
 
 import '../services/api_service.dart';
 
@@ -29,6 +30,40 @@ class _JobsScreenState extends State<JobsScreen> {
   Future<void> _refreshJobs() async {
     setState(_loadJobs);
     await _jobsFuture;
+  }
+
+  Future<void> _handleLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Log Out"),
+        content: const Text("Are you sure you want to sign out of EzyHelpers?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Sign Out'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await widget.apiService.logout();
+
+      if (!mounted) return;
+
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    }
   }
 
   Widget _buildStatusBadge(String status) {
@@ -97,7 +132,11 @@ class _JobsScreenState extends State<JobsScreen> {
             Text('Assigned Jobs'),
             Text(
               'Partner Workflow',
-              style: TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.normal),
+              style: TextStyle(
+                fontSize: 12,
+                color: Color(0xFF64748B),
+                fontWeight: FontWeight.normal,
+              ),
             ),
           ],
         ),
@@ -106,6 +145,11 @@ class _JobsScreenState extends State<JobsScreen> {
             onPressed: () => setState(_loadJobs),
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh jobs',
+          ),
+          IconButton(
+            onPressed: _handleLogout,
+            icon: const Icon(Icons.logout, color: Color(0xFFDC2626)),
+            tooltip: 'Log out',
           ),
         ],
       ),
@@ -214,10 +258,7 @@ class _JobsScreenState extends State<JobsScreen> {
                   const Text(
                     'You are all caught up. Pull down or tap refresh to check for new requests.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF64748B),
-                    ),
+                    style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
                   ),
                 ],
               );
@@ -318,7 +359,9 @@ class _JobsScreenState extends State<JobsScreen> {
                               const SizedBox(width: 4),
                               Expanded(
                                 child: Text(
-                                  job.location.isEmpty ? 'Location not specified' : job.location,
+                                  job.location.isEmpty
+                                      ? 'Location not specified'
+                                      : job.location,
                                   style: const TextStyle(
                                     fontSize: 13,
                                     color: Color(0xFF334155),
