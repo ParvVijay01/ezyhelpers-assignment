@@ -138,7 +138,12 @@ class _JobsScreenState extends State<JobsScreen> {
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () {
                       Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => JobDetailsScreen()),
+                        MaterialPageRoute(
+                          builder: (_) => JobDetailsScreen(
+                            job: job,
+                            apiService: widget.apiService,
+                          ),
+                        ),
                       );
                     },
                   ),

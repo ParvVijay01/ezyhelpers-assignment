@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mobile/screens/job_screen.dart';
+import 'package:mobile/services/analytic_service.dart';
 
 import '../services/api_service.dart';
 
@@ -33,6 +34,9 @@ class _LoginScreenState extends State<LoginScreen> {
         _usernameController.text.trim(),
         _passwordController.text,
       );
+
+      // Log only after the API confirms successful login.
+      await AnalyticsService.loginSuccess();
 
       if (!mounted) return;
 
@@ -84,7 +88,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 32),
-
                   TextFormField(
                     controller: _usernameController,
                     decoration: const InputDecoration(
@@ -97,7 +100,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         : null,
                   ),
                   const SizedBox(height: 16),
-
                   TextFormField(
                     controller: _passwordController,
                     obscureText: true,
@@ -111,7 +113,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         : null,
                   ),
                   const SizedBox(height: 16),
-
                   if (_errorMessage != null) ...[
                     Text(
                       _errorMessage!,
@@ -119,7 +120,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 12),
                   ],
-
                   FilledButton(
                     onPressed: _isLoading ? null : _login,
                     child: Padding(
