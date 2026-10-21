@@ -3,14 +3,47 @@ import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:mobile/model/job.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   static final String baseUrl = dotenv.env['BASE_URL'] ?? '';
 
   String? _token;
+  String? _username;
+
+  String? get token => _token;
+  String? get username => _username;
+
+  bool get isAuthenticated => _token != null && _token!.isNotEmpty;
 
   void setToken(String token) {
     _token = token;
+  }
+
+  Future<bool> tryAutoLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedToken = prefs.getString('auth_token');
+    final savedUsername = prefs.getString('username');
+    if (savedToken != null && savedToken.isNotEmpty) {
+      _token = savedToken;
+      _username = savedUsername;
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> _saveSession(String token, String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('auth_token', token);
+    await prefs.setString('username', username);
+  }
+
+  Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('auth_token');
+    await prefs.remove('username');
+    _token = null;
+    _username = null;
   }
 
   Map<String, String> get _headers => {
@@ -31,7 +64,11 @@ class ApiService {
       throw Exception(data['error'] ?? 'Login failed');
     }
 
-    setToken(data['token'] as String);
+    final token = data['token'] as String;
+
+    setToken(token);
+    _username = username;
+    await _saveSession(token, username);
 
     return Map<String, dynamic>.from(data);
   }
