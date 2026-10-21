@@ -1,18 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:mobile/model/job.dart';
+import 'package:mobile/provider/jobs_provider.dart';
 import 'package:mobile/services/analytic_service.dart';
-
-import '../services/api_service.dart';
+import 'package:mobile/services/api_service.dart';
+import 'package:mobile/theme/theme.dart';
+import 'package:provider/provider.dart';
 
 class JobDetailsScreen extends StatefulWidget {
-  final Job job;
-  final ApiService apiService;
+  const JobDetailsScreen({super.key, required this.job});
 
-  const JobDetailsScreen({
-    super.key,
-    required this.job,
-    required this.apiService,
-  });
+  final Job job;
 
   @override
   State<JobDetailsScreen> createState() => _JobDetailsScreenState();
@@ -27,8 +24,6 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
   void initState() {
     super.initState();
     _status = widget.job.status;
-
-    // Log once when this details screen is opened.
     _logJobViewed();
   }
 
@@ -40,31 +35,23 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     }
   }
 
-  String? get _nextStatus {
-    switch (_status) {
-      case 'ASSIGNED':
-        return 'IN_PROGRESS';
-      case 'IN_PROGRESS':
-        return 'COMPLETED';
-      default:
-        return null;
-    }
-  }
+  String? get _nextStatus => switch (_status) {
+        'ASSIGNED' => 'IN_PROGRESS',
+        'IN_PROGRESS' => 'COMPLETED',
+        _ => null,
+      };
 
-  String? get _actionLabel {
-    switch (_status) {
-      case 'ASSIGNED':
-        return 'Start Job';
-      case 'IN_PROGRESS':
-        return 'Complete Job';
-      default:
-        return null;
-    }
-  }
+  String? get _actionLabel => switch (_status) {
+        'ASSIGNED' => 'Start Job',
+        'IN_PROGRESS' => 'Complete Job',
+        _ => null,
+      };
 
   Future<void> _updateStatus() async {
     final nextStatus = _nextStatus;
     if (nextStatus == null || _isUpdating) return;
+
+    final jobsProvider = context.read<JobsProvider>();
 
     setState(() {
       _isUpdating = true;
@@ -72,38 +59,36 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     });
 
     try {
-      final updatedJob = await widget.apiService.updateJobStatus(
+      final updatedJob = await jobsProvider.updateJobStatus(
         widget.job.id,
         nextStatus,
       );
 
-      final newStatus = updatedJob['status'] as String;
+      final newStatus = updatedJob['status'];
+      if (newStatus is! String) {
+        throw const ApiException('Invalid response from server.');
+      }
+
+      jobsProvider.loadJobs().ignore();
 
       if (!mounted) return;
 
-      setState(() {
-        _status = newStatus;
-      });
+      setState(() => _status = newStatus);
 
-      // The backend update succeeded, so log the event.
       try {
         await AnalyticsService.jobStatusUpdated(widget.job.id, newStatus);
       } catch (error) {
-        // Analytics failures should not make a successful job update
-        // appear to have failed.
         debugPrint('Failed to log job_status_updated: $error');
       }
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Job updated to $_status')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Job updated to $newStatus')),
+      );
     } catch (error) {
       if (!mounted) return;
-
-      setState(() {
-        _errorMessage = error.toString().replaceFirst('Exception: ', '');
-      });
+      setState(() => _errorMessage = error.toString());
     } finally {
       if (mounted) {
         setState(() => _isUpdating = false);
@@ -111,37 +96,192 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     }
   }
 
-  Widget _buildStatusBadge(String status) {
-    Color bg;
-    Color fg;
-    IconData icon;
-    String label;
+  @override
+  Widget build(BuildContext context) {
+    final job = widget.job;
+    final actionLabel = _actionLabel;
 
-    switch (status) {
-      case 'ASSIGNED':
-        bg = const Color(0xFFFEF3C7);
-        fg = const Color(0xFFB45309);
-        icon = Icons.schedule;
-        label = 'Assigned';
-        break;
-      case 'IN_PROGRESS':
-        bg = const Color(0xFFDBEAFE);
-        fg = const Color(0xFF1D4ED8);
-        icon = Icons.pending_outlined;
-        label = 'In Progress';
-        break;
-      case 'COMPLETED':
-        bg = const Color(0xFFDCFCE7);
-        fg = const Color(0xFF15803D);
-        icon = Icons.check_circle_outline;
-        label = 'Completed';
-        break;
-      default:
-        bg = const Color(0xFFF1F5F9);
-        fg = const Color(0xFF475569);
-        icon = Icons.info_outline;
-        label = status;
-    }
+    return Scaffold(
+      appBar: AppBar(title: const Text('Job Details')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _SectionCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'JOB #${job.id}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.icon,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    _StatusBadge(status: _status),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  job.title,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textDark,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _ProgressStepper(status: _status),
+          const SizedBox(height: 16),
+          _SectionCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Service Details',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textDark,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _InfoTile(
+                  icon: Icons.description_outlined,
+                  title: 'Description',
+                  value: job.description.isEmpty
+                      ? 'No description provided'
+                      : job.description,
+                ),
+                const SizedBox(height: 14),
+                const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                const SizedBox(height: 14),
+                _InfoTile(
+                  icon: Icons.location_on_outlined,
+                  title: 'Location',
+                  value: job.location.isEmpty
+                      ? 'No location provided'
+                      : job.location,
+                ),
+                const SizedBox(height: 14),
+                const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                const SizedBox(height: 14),
+                _InfoTile(
+                  icon: Icons.calendar_today_outlined,
+                  title: 'Scheduled At',
+                  value: job.scheduledAt == null || job.scheduledAt!.isEmpty
+                      ? 'Not scheduled'
+                      : job.scheduledAt!,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          if (_errorMessage != null) ...[
+            _ErrorBanner(message: _errorMessage!),
+            const SizedBox(height: 16),
+          ],
+          if (actionLabel != null)
+            FilledButton.icon(
+              onPressed: _isUpdating ? null : _updateStatus,
+              icon: _isUpdating
+                  ? const SizedBox.shrink()
+                  : Icon(
+                      _status == 'ASSIGNED'
+                          ? Icons.play_arrow
+                          : Icons.check_circle,
+                      size: 20,
+                    ),
+              label: _isUpdating
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(
+                      actionLabel,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+            )
+          else
+            const _CompletedBanner(),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({
+    required this.child,
+    this.padding = const EdgeInsets.all(20),
+  });
+
+  final Widget child;
+  final EdgeInsets padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final (bg, fg, icon, label) = switch (status) {
+      'ASSIGNED' => (
+          const Color(0xFFFEF3C7),
+          const Color(0xFFB45309),
+          Icons.schedule,
+          'Assigned',
+        ),
+      'IN_PROGRESS' => (
+          const Color(0xFFDBEAFE),
+          const Color(0xFF1D4ED8),
+          Icons.pending_outlined,
+          'In Progress',
+        ),
+      'COMPLETED' => (
+          const Color(0xFFDCFCE7),
+          const Color(0xFF15803D),
+          Icons.check_circle_outline,
+          'Completed',
+        ),
+      _ => (
+          const Color(0xFFF1F5F9),
+          const Color(0xFF475569),
+          Icons.info_outline,
+          status,
+        ),
+    };
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -166,19 +306,22 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
       ),
     );
   }
+}
 
-  Widget _buildProgressStepper() {
-    final steps = ['ASSIGNED', 'IN_PROGRESS', 'COMPLETED'];
-    final labels = ['Assigned', 'In Progress', 'Completed'];
-    final currentIndex = steps.indexOf(_status);
+class _ProgressStepper extends StatelessWidget {
+  const _ProgressStepper({required this.status});
 
-    return Container(
+  final String status;
+
+  static const _steps = ['ASSIGNED', 'IN_PROGRESS', 'COMPLETED'];
+  static const _labels = ['Assigned', 'In Progress', 'Completed'];
+
+  @override
+  Widget build(BuildContext context) {
+    final currentIndex = _steps.indexOf(status);
+
+    return _SectionCard(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -187,20 +330,19 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.bold,
-              color: Color(0xFF64748B),
+              color: AppColors.icon,
               letterSpacing: 0.5,
             ),
           ),
           const SizedBox(height: 16),
           Row(
-            children: List.generate(steps.length * 2 - 1, (index) {
+            children: List.generate(_steps.length * 2 - 1, (index) {
               if (index.isOdd) {
-                final stepBefore = index ~/ 2;
-                final isDone = currentIndex > stepBefore;
+                final isDone = currentIndex > index ~/ 2;
                 return Expanded(
                   child: Container(
                     height: 3,
-                    color: isDone ? const Color(0xFF0F766E) : const Color(0xFFE2E8F0),
+                    color: isDone ? AppColors.primary : AppColors.border,
                   ),
                 );
               }
@@ -215,35 +357,46 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                     width: 28,
                     height: 28,
                     decoration: BoxDecoration(
-                      color: isPassed ? const Color(0xFF0F766E) : const Color(0xFFF1F5F9),
+                      color: isPassed
+                          ? AppColors.primary
+                          : const Color(0xFFF1F5F9),
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: isCurrent
-                            ? const Color(0xFF0D9488)
-                            : (isPassed ? const Color(0xFF0F766E) : const Color(0xFFCBD5E1)),
+                            ? AppColors.seed
+                            : (isPassed
+                                ? AppColors.primary
+                                : AppColors.borderStrong),
                         width: isCurrent ? 2.5 : 1.5,
                       ),
                     ),
                     child: Center(
                       child: isPassed && !isCurrent
-                          ? const Icon(Icons.check, size: 16, color: Colors.white)
+                          ? const Icon(
+                              Icons.check,
+                              size: 16,
+                              color: Colors.white,
+                            )
                           : Text(
                               '${stepIndex + 1}',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
-                                color: isPassed ? Colors.white : const Color(0xFF64748B),
+                                color: isPassed
+                                    ? Colors.white
+                                    : AppColors.icon,
                               ),
                             ),
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    labels[stepIndex],
+                    _labels[stepIndex],
                     style: TextStyle(
                       fontSize: 11,
-                      fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
-                      color: isCurrent ? const Color(0xFF0F766E) : const Color(0xFF64748B),
+                      fontWeight:
+                          isCurrent ? FontWeight.bold : FontWeight.w500,
+                      color: isCurrent ? AppColors.primary : AppColors.icon,
                     ),
                   ),
                 ],
@@ -254,183 +407,21 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
       ),
     );
   }
+}
+
+class _InfoTile extends StatelessWidget {
+  const _InfoTile({
+    required this.icon,
+    required this.title,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
-    final job = widget.job;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Job Details'),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'JOB #${job.id}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF64748B),
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    _buildStatusBadge(_status),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  job.title,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F172A),
-                    height: 1.25,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildProgressStepper(),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Service Details',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _infoTile(
-                  icon: Icons.description_outlined,
-                  title: 'Description',
-                  value: job.description.isEmpty ? 'No description provided' : job.description,
-                ),
-                const SizedBox(height: 14),
-                const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                const SizedBox(height: 14),
-                _infoTile(
-                  icon: Icons.location_on_outlined,
-                  title: 'Location',
-                  value: job.location.isEmpty ? 'No location provided' : job.location,
-                ),
-                const SizedBox(height: 14),
-                const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                const SizedBox(height: 14),
-                _infoTile(
-                  icon: Icons.calendar_today_outlined,
-                  title: 'Scheduled At',
-                  value: job.scheduledAt == null || job.scheduledAt!.isEmpty
-                      ? 'Not scheduled'
-                      : job.scheduledAt!,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          if (_errorMessage != null) ...[
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFEF2F2),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFECACA)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.error_outline, color: Color(0xFFDC2626), size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _errorMessage!,
-                      style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-          if (_actionLabel != null)
-            FilledButton.icon(
-              onPressed: _isUpdating ? null : _updateStatus,
-              icon: _isUpdating
-                  ? const SizedBox.shrink()
-                  : Icon(
-                      _status == 'ASSIGNED' ? Icons.play_arrow : Icons.check_circle,
-                      size: 20,
-                    ),
-              label: _isUpdating
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : Text(
-                      _actionLabel!,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-            )
-          else
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF0FDF4),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFBBF7D0)),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.verified, color: Color(0xFF16A34A), size: 22),
-                  SizedBox(width: 8),
-                  Text(
-                    'This job is completed',
-                    style: TextStyle(
-                      color: Color(0xFF15803D),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          const SizedBox(height: 24),
-        ],
-      ),
-    );
-  }
-
-  Widget _infoTile({
-    required IconData icon,
-    required String title,
-    required String value,
-  }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -440,7 +431,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
             color: const Color(0xFFF1F5F9),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(icon, size: 18, color: const Color(0xFF0F766E)),
+          child: Icon(icon, size: 18, color: AppColors.primary),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -452,7 +443,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF64748B),
+                  color: AppColors.icon,
                 ),
               ),
               const SizedBox(height: 4),
@@ -461,7 +452,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
-                  color: Color(0xFF0F172A),
+                  color: AppColors.textDark,
                   height: 1.35,
                 ),
               ),
@@ -469,6 +460,67 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFECACA)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline, color: Color(0xFFDC2626), size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompletedBanner extends StatelessWidget {
+  const _CompletedBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0FDF4),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFBBF7D0)),
+      ),
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.verified, color: Color(0xFF16A34A), size: 22),
+          SizedBox(width: 8),
+          Text(
+            'This job is completed',
+            style: TextStyle(
+              color: Color(0xFF15803D),
+              fontWeight: FontWeight.bold,
+              fontSize: 15,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
