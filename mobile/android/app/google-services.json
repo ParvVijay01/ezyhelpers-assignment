@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "594309999645",
+    "project_id": "ezyhelpers-fd694",
+    "storage_bucket": "ezyhelpers-fd694.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:594309999645:android:ba33955828d49addc52af4",
+        "android_client_info": {
+          "package_name": "com.example.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDj4mzd4J5Pnfkc-gFhJI4MBuP4SstA1bk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:594309999645:android:0d5541c04441dc29c52af4",
+        "android_client_info": {
+          "package_name": "com.ezyhelpers.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDj4mzd4J5Pnfkc-gFhJI4MBuP4SstA1bk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
