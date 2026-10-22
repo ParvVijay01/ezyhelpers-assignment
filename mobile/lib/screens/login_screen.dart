@@ -26,20 +26,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       await context.read<AuthProvider>().login(
-            _usernameController.text,
-            _passwordController.text,
-          );
+        _usernameController.text,
+        _passwordController.text,
+      );
     } catch (error) {
       if (!mounted) return;
       setState(() => _errorMessage = error.toString());
       return;
     }
 
-    try {
-      await AnalyticsService.loginSuccess();
-    } catch (error) {
-      debugPrint('Failed to log login_success: $error');
-    }
+    await AnalyticsService.loginSuccess();
   }
 
   @override

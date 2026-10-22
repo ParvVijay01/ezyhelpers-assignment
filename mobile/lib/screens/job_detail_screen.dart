@@ -24,28 +24,20 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
   void initState() {
     super.initState();
     _status = widget.job.status;
-    _logJobViewed();
-  }
-
-  Future<void> _logJobViewed() async {
-    try {
-      await AnalyticsService.jobViewed(widget.job.id);
-    } catch (error) {
-      debugPrint('Failed to log job_viewed: $error');
-    }
+    AnalyticsService.jobViewed(widget.job.id);
   }
 
   String? get _nextStatus => switch (_status) {
-        'ASSIGNED' => 'IN_PROGRESS',
-        'IN_PROGRESS' => 'COMPLETED',
-        _ => null,
-      };
+    'ASSIGNED' => 'IN_PROGRESS',
+    'IN_PROGRESS' => 'COMPLETED',
+    _ => null,
+  };
 
   String? get _actionLabel => switch (_status) {
-        'ASSIGNED' => 'Start Job',
-        'IN_PROGRESS' => 'Complete Job',
-        _ => null,
-      };
+    'ASSIGNED' => 'Start Job',
+    'IN_PROGRESS' => 'Complete Job',
+    _ => null,
+  };
 
   Future<void> _updateStatus() async {
     final nextStatus = _nextStatus;
@@ -69,23 +61,16 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
         throw const ApiException('Invalid response from server.');
       }
 
-      jobsProvider.loadJobs().ignore();
-
       if (!mounted) return;
 
       setState(() => _status = newStatus);
 
-      try {
-        await AnalyticsService.jobStatusUpdated(widget.job.id, newStatus);
-      } catch (error) {
-        debugPrint('Failed to log job_status_updated: $error');
-      }
+      await AnalyticsService.jobStatusUpdated(widget.job.id, newStatus);
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Job updated to $newStatus')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Job updated to $newStatus')));
     } catch (error) {
       if (!mounted) return;
       setState(() => _errorMessage = error.toString());
@@ -258,29 +243,29 @@ class _StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final (bg, fg, icon, label) = switch (status) {
       'ASSIGNED' => (
-          const Color(0xFFFEF3C7),
-          const Color(0xFFB45309),
-          Icons.schedule,
-          'Assigned',
-        ),
+        const Color(0xFFFEF3C7),
+        const Color(0xFFB45309),
+        Icons.schedule,
+        'Assigned',
+      ),
       'IN_PROGRESS' => (
-          const Color(0xFFDBEAFE),
-          const Color(0xFF1D4ED8),
-          Icons.pending_outlined,
-          'In Progress',
-        ),
+        const Color(0xFFDBEAFE),
+        const Color(0xFF1D4ED8),
+        Icons.pending_outlined,
+        'In Progress',
+      ),
       'COMPLETED' => (
-          const Color(0xFFDCFCE7),
-          const Color(0xFF15803D),
-          Icons.check_circle_outline,
-          'Completed',
-        ),
+        const Color(0xFFDCFCE7),
+        const Color(0xFF15803D),
+        Icons.check_circle_outline,
+        'Completed',
+      ),
       _ => (
-          const Color(0xFFF1F5F9),
-          const Color(0xFF475569),
-          Icons.info_outline,
-          status,
-        ),
+        const Color(0xFFF1F5F9),
+        const Color(0xFF475569),
+        Icons.info_outline,
+        status,
+      ),
     };
 
     return Container(
@@ -365,8 +350,8 @@ class _ProgressStepper extends StatelessWidget {
                         color: isCurrent
                             ? AppColors.seed
                             : (isPassed
-                                ? AppColors.primary
-                                : AppColors.borderStrong),
+                                  ? AppColors.primary
+                                  : AppColors.borderStrong),
                         width: isCurrent ? 2.5 : 1.5,
                       ),
                     ),
@@ -382,9 +367,7 @@ class _ProgressStepper extends StatelessWidget {
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
-                                color: isPassed
-                                    ? Colors.white
-                                    : AppColors.icon,
+                                color: isPassed ? Colors.white : AppColors.icon,
                               ),
                             ),
                     ),
@@ -394,8 +377,7 @@ class _ProgressStepper extends StatelessWidget {
                     _labels[stepIndex],
                     style: TextStyle(
                       fontSize: 11,
-                      fontWeight:
-                          isCurrent ? FontWeight.bold : FontWeight.w500,
+                      fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
                       color: isCurrent ? AppColors.primary : AppColors.icon,
                     ),
                   ),

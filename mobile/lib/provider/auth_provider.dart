@@ -1,10 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:logging/logging.dart';
 import 'package:mobile/services/api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthProvider extends ChangeNotifier {
-  AuthProvider({required this.apiService});
+  AuthProvider({required this.apiService}) {
+    apiService.onUnauthorized = _handleUnauthorized;
+  }
 
+  static final _log = Logger('AuthProvider');
   static const _tokenKey = 'auth_token';
   static const _usernameKey = 'username';
 
@@ -24,11 +30,13 @@ class AuthProvider extends ChangeNotifier {
     final savedToken = prefs.getString(_tokenKey);
 
     if (savedToken == null || savedToken.isEmpty) {
+      _log.fine('No saved session');
       return false;
     }
 
     _token = savedToken;
     _username = prefs.getString(_usernameKey);
+    _log.info('Restored saved session');
     notifyListeners();
     return true;
   }
@@ -40,9 +48,10 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final cleanUsername = username.trim();
       final result = await apiService.post(
         '/api/auth/login/',
-        body: {'username': username.trim(), 'password': password},
+        body: {'username': cleanUsername, 'password': password},
       );
 
       final newToken = result is Map ? result['token'] : null;
@@ -53,11 +62,15 @@ class AuthProvider extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await Future.wait([
         prefs.setString(_tokenKey, newToken),
-        prefs.setString(_usernameKey, username.trim()),
+        prefs.setString(_usernameKey, cleanUsername),
       ]);
 
       _token = newToken;
-      _username = username.trim();
+      _username = cleanUsername;
+      _log.info('Login succeeded');
+    } on ApiException catch (error) {
+      _log.info('Login failed: ${error.message}');
+      rethrow;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -65,14 +78,37 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await Future.wait([
-      prefs.remove(_tokenKey),
-      prefs.remove(_usernameKey),
-    ]);
+    final previousToken = _token;
+    await _clearSession();
+    _log.info('Logged out');
 
+    if (previousToken == null) return;
+
+    try {
+      await apiService.post('/api/auth/logout/', token: previousToken);
+    } on ApiException catch (error) {
+      _log.info('Server-side logout skipped: ${error.message}');
+    }
+  }
+
+  void _handleUnauthorized() {
+    if (!isAuthenticated) return;
+    _log.warning('Session expired or revoked; signing out');
+    unawaited(_clearSession());
+  }
+
+  Future<void> _clearSession() async {
     _token = null;
     _username = null;
     notifyListeners();
+
+    final prefs = await SharedPreferences.getInstance();
+    await Future.wait([prefs.remove(_tokenKey), prefs.remove(_usernameKey)]);
+  }
+
+  @override
+  void dispose() {
+    apiService.onUnauthorized = null;
+    super.dispose();
   }
 }

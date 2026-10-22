@@ -1,5 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:logging/logging.dart';
+
+final _log = Logger('ApiService');
 
 class ApiException implements Exception {
   const ApiException(this.message, {this.statusCode, this.details});
@@ -21,19 +24,21 @@ class ApiService {
     Future<String?> Function()? tokenProvider,
     this.authScheme = 'Token',
     Duration timeout = const Duration(seconds: 15),
-  })  : _tokenProvider = tokenProvider,
-        _dio = dio ??
-            Dio(
-              BaseOptions(
-                baseUrl: _readBaseUrl(),
-                connectTimeout: timeout,
-                sendTimeout: timeout,
-                receiveTimeout: timeout,
-                contentType: Headers.jsonContentType,
-                headers: {'Accept': 'application/json'},
-              ),
-            ) {
-    _dio.interceptors.add(
+  }) : _tokenProvider = tokenProvider,
+       _dio =
+           dio ??
+           Dio(
+             BaseOptions(
+               baseUrl: _readBaseUrl(),
+               connectTimeout: timeout,
+               sendTimeout: timeout,
+               receiveTimeout: timeout,
+               contentType: Headers.jsonContentType,
+               headers: {'Accept': 'application/json'},
+             ),
+           ) {
+    _dio.interceptors.addAll([
+      _LoggingInterceptor(),
       InterceptorsWrapper(
         onRequest: (options, handler) async {
           if (!options.headers.containsKey('Authorization') &&
@@ -45,13 +50,25 @@ class ApiService {
           }
           handler.next(options);
         },
+        onError: (error, handler) {
+          final hadToken = error.requestOptions.headers.containsKey(
+            'Authorization',
+          );
+          if (error.response?.statusCode == 401 && hadToken) {
+            _log.warning('Server rejected the session token (401)');
+            onUnauthorized?.call();
+          }
+          handler.next(error);
+        },
       ),
-    );
+    ]);
   }
 
   final Dio _dio;
   final Future<String?> Function()? _tokenProvider;
   final String authScheme;
+
+  void Function()? onUnauthorized;
 
   static String _readBaseUrl() {
     final value = dotenv.env['BASE_URL'];
@@ -66,18 +83,26 @@ class ApiService {
     Map<String, dynamic>? query,
     String? token,
     CancelToken? cancelToken,
-  }) =>
-      _request('GET', path,
-          query: query, token: token, cancelToken: cancelToken);
+  }) => _request(
+    'GET',
+    path,
+    query: query,
+    token: token,
+    cancelToken: cancelToken,
+  );
 
   Future<dynamic> post(
     String path, {
     Map<String, dynamic>? body,
     String? token,
     CancelToken? cancelToken,
-  }) =>
-      _request('POST', path,
-          body: body, token: token, cancelToken: cancelToken);
+  }) => _request(
+    'POST',
+    path,
+    body: body,
+    token: token,
+    cancelToken: cancelToken,
+  );
 
   Future<dynamic> put(
     String path, {
@@ -92,18 +117,26 @@ class ApiService {
     Map<String, dynamic>? body,
     String? token,
     CancelToken? cancelToken,
-  }) =>
-      _request('PATCH', path,
-          body: body, token: token, cancelToken: cancelToken);
+  }) => _request(
+    'PATCH',
+    path,
+    body: body,
+    token: token,
+    cancelToken: cancelToken,
+  );
 
   Future<dynamic> delete(
     String path, {
     Map<String, dynamic>? body,
     String? token,
     CancelToken? cancelToken,
-  }) =>
-      _request('DELETE', path,
-          body: body, token: token, cancelToken: cancelToken);
+  }) => _request(
+    'DELETE',
+    path,
+    body: body,
+    token: token,
+    cancelToken: cancelToken,
+  );
 
   void dispose() => _dio.close();
 
@@ -162,6 +195,7 @@ class ApiService {
         );
       case DioExceptionType.badCertificate:
       case DioExceptionType.unknown:
+        _log.severe('Unexpected network failure', e.error, e.stackTrace);
         return const ApiException('Something went wrong. Please try again.');
     }
   }
@@ -186,5 +220,45 @@ class ApiService {
       return entry.key == 'non_field_errors' ? text : '${entry.key}: $text';
     }
     return null;
+  }
+}
+
+class _LoggingInterceptor extends Interceptor {
+  static final _httpLog = Logger('Http');
+  static const _startedAtKey = 'startedAtMs';
+
+  @override
+  void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+    options.extra[_startedAtKey] = DateTime.now().millisecondsSinceEpoch;
+    _httpLog.fine('--> ${options.method} ${options.uri.path}');
+    handler.next(options);
+  }
+
+  @override
+  void onResponse(Response response, ResponseInterceptorHandler handler) {
+    final options = response.requestOptions;
+    _httpLog.info(
+      '<-- ${response.statusCode} ${options.method} ${options.uri.path} '
+      '(${_elapsedMs(options)}ms)',
+    );
+    handler.next(response);
+  }
+
+  @override
+  void onError(DioException err, ErrorInterceptorHandler handler) {
+    final options = err.requestOptions;
+    final outcome = err.response?.statusCode ?? err.type.name;
+    _httpLog.warning(
+      '<-- $outcome ${options.method} ${options.uri.path} '
+      '(${_elapsedMs(options)}ms)',
+    );
+    handler.next(err);
+  }
+
+  int _elapsedMs(RequestOptions options) {
+    final startedAt = options.extra[_startedAtKey] as int?;
+    return startedAt == null
+        ? 0
+        : DateTime.now().millisecondsSinceEpoch - startedAt;
   }
 }

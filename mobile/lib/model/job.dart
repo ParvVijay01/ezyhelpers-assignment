@@ -1,11 +1,4 @@
 class Job {
-  final int id;
-  final String title;
-  final String description;
-  final String location;
-  final String status;
-  final String? scheduledAt;
-
   const Job({
     required this.id,
     required this.title,
@@ -15,6 +8,13 @@ class Job {
     this.scheduledAt,
   });
 
+  final int id;
+  final String title;
+  final String description;
+  final String location;
+  final String status;
+  final String? scheduledAt;
+
   factory Job.fromJson(Map<String, dynamic> json) {
     return Job(
       id: json['id'] as int,
@@ -23,6 +23,17 @@ class Job {
       location: json['location'] as String? ?? '',
       status: json['status'] as String,
       scheduledAt: json['scheduled_at'] as String?,
+    );
+  }
+
+  Job withStatus(String newStatus) {
+    return Job(
+      id: id,
+      title: title,
+      description: description,
+      location: location,
+      status: newStatus,
+      scheduledAt: scheduledAt,
     );
   }
 }

@@ -1,28 +1,33 @@
 import 'package:firebase_analytics/firebase_analytics.dart';
-import 'package:flutter/material.dart';
+import 'package:logging/logging.dart';
 
 class AnalyticsService {
-  static final FirebaseAnalytics _analytics = FirebaseAnalytics.instance;
+  AnalyticsService._();
 
-  static Future<void> loginSuccess() async {
-    debugPrint('Analytics: logging login_success');
+  static final _log = Logger('Analytics');
 
-    await _analytics.logEvent(name: 'login_success');
+  static FirebaseAnalytics get _analytics => FirebaseAnalytics.instance;
 
-    debugPrint('Analytics: login_success logged');
-  }
+  static Future<void> loginSuccess() => _logEvent('login_success');
 
-  static Future<void> jobViewed(int jobId) async {
-    await _analytics.logEvent(
-      name: 'job_viewed',
-      parameters: {'job_id': jobId},
-    );
-  }
+  static Future<void> jobViewed(int jobId) =>
+      _logEvent('job_viewed', {'job_id': jobId});
 
-  static Future<void> jobStatusUpdated(int jobId, String newStatus) async {
-    await _analytics.logEvent(
-      name: 'job_status_updated',
-      parameters: {'job_id': jobId, 'new_status': newStatus},
-    );
+  static Future<void> jobStatusUpdated(int jobId, String newStatus) =>
+      _logEvent('job_status_updated', {
+        'job_id': jobId,
+        'new_status': newStatus,
+      });
+
+  static Future<void> _logEvent(
+    String name, [
+    Map<String, Object>? parameters,
+  ]) async {
+    try {
+      await _analytics.logEvent(name: name, parameters: parameters);
+      _log.fine('Logged $name ${parameters ?? ''}');
+    } catch (error, stackTrace) {
+      _log.warning('Failed to log $name', error, stackTrace);
+    }
   }
 }

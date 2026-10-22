@@ -1,9 +1,12 @@
 import 'package:flutter/foundation.dart';
+import 'package:logging/logging.dart';
 import 'package:mobile/model/job.dart';
 import 'package:mobile/services/api_service.dart';
 
 class JobsProvider extends ChangeNotifier {
   JobsProvider({required this.apiService});
+
+  static final _log = Logger('JobsProvider');
 
   final ApiService apiService;
 
@@ -19,6 +22,10 @@ class JobsProvider extends ChangeNotifier {
 
   void setToken(String? token) {
     _token = token;
+    if (token == null) {
+      _jobs = [];
+      _error = null;
+    }
   }
 
   Future<void> loadJobs() async {
@@ -39,8 +46,10 @@ class JobsProvider extends ChangeNotifier {
       _jobs = items
           .map((item) => Job.fromJson(Map<String, dynamic>.from(item as Map)))
           .toList();
+      _log.info('Loaded ${_jobs.length} jobs');
     } catch (error) {
       _error = error.toString();
+      _log.warning('Failed to load jobs: $_error');
       rethrow;
     } finally {
       _isLoading = false;
@@ -59,16 +68,24 @@ class JobsProvider extends ChangeNotifier {
     return _asMap(result);
   }
 
-  Future<Map<String, dynamic>> updateJobStatus(
-    int id,
-    String newStatus,
-  ) async {
+  Future<Map<String, dynamic>> updateJobStatus(int id, String newStatus) async {
     final result = await apiService.patch(
       '/api/jobs/$id/status/',
       body: {'status': newStatus},
       token: _token,
     );
-    return _asMap(result);
+    final updated = _asMap(result);
+
+    final confirmedStatus = updated['status'];
+    final index = _jobs.indexWhere((job) => job.id == id);
+    if (confirmedStatus is String && index != -1) {
+      _jobs = List.of(_jobs)
+        ..[index] = _jobs[index].withStatus(confirmedStatus);
+      _notify();
+    }
+    _log.info('Job $id status -> ${updated['status']}');
+
+    return updated;
   }
 
   Map<String, dynamic> _asMap(dynamic result) {
